@@ -33,3 +33,4 @@ MODEM_log_*
 ***/.clang-format
 ***/configure~
 .DS_Store
+.idea/
