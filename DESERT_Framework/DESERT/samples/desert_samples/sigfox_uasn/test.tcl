@@ -199,14 +199,28 @@ proc createNode { id } {
     global channel propagation data_mask ns cbr position node udp portnum ipr ipif channel_estimator
     global phy posdb opt rvposx rvposy rvposz mhrouting mll mac woss_utilities woss_creator db_manager
     global node_coordinates interf_data
-    global sink_ids
+    global sink_ids node_ids
 
-    # set node($id) [$ns create-M_Node $opt(tracefile) $opt(cltracefile)]
-    foreach i $opt(sink_ids) {
-		set cbr($id,$i)  [new Module/UW/CBR]
+    if {$id > 254} {
+		puts "Max id value is 254"
+		exit
     }
-	#for {set cnt 0} {$cnt < $opt(sink_ids)} {incr cnt} {
-	#}
+
+    if {[lsearch -exact $sink_ids $id] != -1} {
+        puts "Id is taken by a sink!"
+        exit
+    }
+
+    if {[lsearch -exact $node_ids $id] != -1} {
+        puts "Id is taken by another node!"
+        exit
+    }
+
+    set node($id) [$ns create-M_Node $opt(tracefile) $opt(cltracefile)]
+    foreach sink_id $sink_ids {
+		set cbr($id,$sink_id)  [new Module/UW/CBR]
+    }
+
     set udp($id)  [new Module/UW/UDP]
     set ipr($id)  [new Module/UW/StaticRouting]
     set ipif($id) [new Module/UW/IP]
@@ -217,6 +231,9 @@ proc createNode { id } {
 	#for {set cnt 0} {$cnt < $opt(nn)} {incr cnt} {
 	#	$node($id) addModule 7 $cbr($id,$cnt)   1  "CBR"
 	#}
+	foreach sink_id $sink_ids {
+	    $node($id) addModule 7 $cbr($id,$sink_id)   1  "CBR"
+	}
     $node($id) addModule 6 $udp($id)   1  "UDP"
     $node($id) addModule 5 $ipr($id)   1  "IPR"
     $node($id) addModule 4 $ipif($id)  1  "IPF"
@@ -224,9 +241,9 @@ proc createNode { id } {
     $node($id) addModule 2 $mac($id)   1  "MAC"
     $node($id) addModule 1 $phy($id)   0  "PHY"
 
-	for {set cnt 0} {$cnt < $opt(nn)} {incr cnt} {
-		$node($id) setConnection $cbr($id,$cnt)   $udp($id)   1
-		set portnum($id,$cnt) [$udp($id) assignPort $cbr($id,$cnt) ]
+	foreach sink_id $sink_ids {
+		$node($id) setConnection $cbr($id,$sink_id)   $udp($id)   1
+		set portnum($id,$sink_id) [$udp($id) assignPort $cbr($id,$sink_id)]
 	}
     $node($id) setConnection $udp($id)      $ipr($id)   1
     $node($id) setConnection $ipr($id)      $ipif($id)  1
@@ -235,10 +252,6 @@ proc createNode { id } {
     $node($id) setConnection $mac($id)      $phy($id)   1
     $node($id) addToChannel  $channel       $phy($id)   1
 
-    if {$id > 254} {
-		puts "hostnum > 254!!! exiting"
-		exit
-    }
     #Set the IP address of the node
     set ip_addr_value [expr $id + 1]
     $ipif($id) addr $ip_addr_value
@@ -272,70 +285,88 @@ proc createNode { id } {
     $mac($id) initialize
 }
 
-# TODO: Put everything in array
 proc createSink { id } {
 
     global channel propagation smask data_mask ns cbr_sink position_sink node_sink udp_sink portnum_sink interf_data_sink
     global phy_data_sink posdb_sink opt mll_sink mac_sink ipr_sink ipif_sink bpsk interf_sink
+    global sink_ids
 
-    set node_sink [$ns create-M_Node $opt(tracefile) $opt(cltracefile)]
+    if {$id > 254} {
+		puts "Max id value is 254"
+		exit
+    }
+
+    if {[lsearch -exact $sink_ids $id] != -1} {
+        puts "Id is taken by another sink!"
+        exit
+    }
+
+    set node_sink($id) [$ns create-M_Node $opt(tracefile) $opt(cltracefile)]
 
     for {set cnt 0} {$cnt < $opt(nn)} {incr cnt} {
-        set cbr_sink($cnt)  [new Module/UW/CBR]
+        set cbr_sink($id,$cnt)  [new Module/UW/CBR]
     }
-    set udp_sink       [new Module/UW/UDP]
-    set ipr_sink       [new Module/UW/StaticRouting]
-    set ipif_sink      [new Module/UW/IP]
-    set mll_sink       [new Module/UW/MLL]
-    set mac_sink       [new Module/UW/CSMA_ALOHA]
-    set phy_data_sink       [new Module/UW/AHOI/PHY]
+    set udp_sink($id)       [new Module/UW/UDP]
+    set ipr_sink($id)       [new Module/UW/StaticRouting]
+    set ipif_sink($id)      [new Module/UW/IP]
+    set mll_sink($id)       [new Module/UW/MLL]
+    set mac_sink($id)       [new Module/UW/CSMA_ALOHA]
+    set phy_data_sink($id)  [new Module/UW/AHOI/PHY]
 
     for { set cnt 0} {$cnt < $opt(nn)} {incr cnt} {
-        $node_sink addModule 7 $cbr_sink($cnt) 0 "CBR"
+        $node_sink($id) addModule 7 $cbr_sink($id,$cnt) 0 "CBR"
     }
-    $node_sink addModule 6 $udp_sink       0 "UDP"
-    $node_sink addModule 5 $ipr_sink       0 "IPR"
-    $node_sink addModule 4 $ipif_sink      0 "IPF"
-    $node_sink addModule 3 $mll_sink       0 "MLL"
-    $node_sink addModule 2 $mac_sink       0 "MAC"
-    $node_sink addModule 1 $phy_data_sink  0 "PHY"
+    $node_sink($id) addModule 6 $udp_sink($id)       0 "UDP"
+    $node_sink($id) addModule 5 $ipr_sink($id)       0 "IPR"
+    $node_sink($id) addModule 4 $ipif_sink($id)      0 "IPF"
+    $node_sink($id) addModule 3 $mll_sink($id)       0 "MLL"
+    $node_sink($id) addModule 2 $mac_sink($id)       0 "MAC"
+    $node_sink($id) addModule 1 $phy_data_sink($id)  0 "PHY"
 
     for { set cnt 0} {$cnt < $opt(nn)} {incr cnt} {
-        $node_sink setConnection $cbr_sink($cnt)  $udp_sink      0
+        $node_sink($id) setConnection $cbr_sink($id,$cnt)  $udp_sink($id)      0
     }
-    $node_sink setConnection $udp_sink  $ipr_sink            0
-    $node_sink setConnection $ipr_sink  $ipif_sink           0
-    $node_sink setConnection $ipif_sink $mll_sink            0
-    $node_sink setConnection $mll_sink  $mac_sink            0
-    $node_sink setConnection $mac_sink  $phy_data_sink       0
-    $node_sink addToChannel  $channel   $phy_data_sink       0
+    $node_sink($id) setConnection $udp_sink($id)  $ipr_sink($id)            0
+    $node_sink($id) setConnection $ipr_sink($id)  $ipif_sink($id)           0
+    $node_sink($id) setConnection $ipif_sink($id) $mll_sink($id)            0
+    $node_sink($id) setConnection $mll_sink($id)  $mac_sink($id)            0
+    $node_sink($id) setConnection $mac_sink($id)  $phy_data_sink($id)       0
+    $node_sink($id) addToChannel  $channel   $phy_data_sink($id)       0
 
     for { set cnt 0} {$cnt < $opt(nn)} {incr cnt} {
-        set portnum_sink($cnt) [$udp_sink assignPort $cbr_sink($cnt)]
-        if {$cnt > 252} {
+        set portnum_sink($id,$cnt) [$udp_sink($id) assignPort $cbr_sink($id,$cnt)]
+        if {$cnt >= 252} {
             puts "hostnum > 252!!! exiting"
             exit
         }
     }
 
-    $ipif_sink addr 254
+    $ipif_sink($id) addr $id
 
-    set position_sink [new "Position/BM"]
-    $node_sink addPosition $position_sink
-    set posdb_sink [new "PlugIn/PositionDB"]
-    $node_sink addPlugin $posdb_sink 20 "PDB"
-    $posdb_sink addpos [$ipif_sink addr] $position_sink
+    set position_sink($id) [new "Position/BM"]
+    $node_sink($id) addPosition $position_sink($id)
+    set posdb_sink($id) [new "PlugIn/PositionDB"]
+    $node_sink($id) addPlugin $posdb_sink($id) 20 "PDB"
 
-    set interf_data_sink [new "MInterference/MIV"]
-    $interf_data_sink set maxinterval_ $opt(maxinterval_)
-    $interf_data_sink set debug_       0
+    # TODO: Figure what this line does
+    $posdb_sink($id) addpos [$ipif_sink($id) addr] $position_sink($id)
 
-    $phy_data_sink setSpectralMask $data_mask
-    $phy_data_sink setInterference $interf_data_sink
-    $phy_data_sink setPropagation $propagation
+    #Interference model
+    set interf_data($id)  [new "Module/UW/INTERFERENCE"]
+    $interf_data($id) set maxinterval_ $opt(maxinterval_)
+    $interf_data($id) set debug_       0
 
-    $mac_sink $opt(ack_mode)
-    $mac_sink initialize
+    #Propagation model
+    $phy_data_sink($id) setPropagation $propagation
+
+    $phy_data_sink($id) setSpectralMask $data_mask
+    $phy_data_sink($id) setInterference $interf_data($id)
+    $phy_data_sink($id) setInterferenceModel "MEANPOWER"; # "CHUNK" is not supported
+    $phy_data_sink($id) setRangePDRFileName "../dbs/ahoi/default_pdr.csv"
+    $phy_data_sink($id) setSIRFileName "../dbs/ahoi/default_sir.csv"
+    $phy_data_sink($id) initLUT
+    $mac_sink($id) $opt(ack_mode)
+    $mac_sink($id) initialize
 }
 
 #################
@@ -344,15 +375,19 @@ proc createSink { id } {
 if {$opt(sink_mode) != 1 && $opt(sink_mode) != 3} {
     error "Invalid sink_mode. Possible modes are 1 and 3"
 }
+set sink_ids [list]
 for {set i 0} {$i < $opt(sink_mode)} {incr i}  {
     createSink [expr 254 - $i]
+    lappend sink_ids [expr 254 - $i]
 }
 
 #################
 # Node Creation #
 #################
+set node_ids [list]
 for {set id 0} {$id < $opt(nn)} {incr id}  {
     createNode $id
+    lappend node_ids $id
 }
 
 ################################
