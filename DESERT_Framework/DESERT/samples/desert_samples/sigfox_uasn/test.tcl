@@ -211,11 +211,6 @@ proc createNode { id } {
         exit
     }
 
-    if {[lsearch -exact $node_ids $id] != -1} {
-        puts "Id is taken by another node!"
-        exit
-    }
-
     set node($id) [$ns create-M_Node $opt(tracefile) $opt(cltracefile)]
     foreach sink_id $sink_ids {
 		set cbr($id,$sink_id)  [new Module/UW/CBR]
@@ -228,9 +223,6 @@ proc createNode { id } {
     set mac($id)  [new Module/UW/CSMA_ALOHA]
     set phy($id)  [new Module/UW/AHOI/PHY]
 
-	#for {set cnt 0} {$cnt < $opt(nn)} {incr cnt} {
-	#	$node($id) addModule 7 $cbr($id,$cnt)   1  "CBR"
-	#}
 	foreach sink_id $sink_ids {
 	    $node($id) addModule 7 $cbr($id,$sink_id)   1  "CBR"
 	}
@@ -263,8 +255,8 @@ proc createNode { id } {
     $posdb($id) addpos [$ipif($id) addr] $position($id)
 
     #Setup positions
-    $position($id) setX_ [expr $id*18]
-    $position($id) setY_ [expr $id*18]
+    $position($id) setX_ [expr $id]
+    $position($id) setY_ [expr $id]
     $position($id) setZ_ -100
 
     #Interference model
@@ -289,7 +281,7 @@ proc createSink { id } {
 
     global channel propagation smask data_mask ns cbr_sink position_sink node_sink udp_sink portnum_sink interf_data_sink
     global phy_data_sink posdb_sink opt mll_sink mac_sink ipr_sink ipif_sink bpsk interf_sink
-    global sink_ids
+    global sink_ids node_ids
 
     if {$id > 254} {
 		puts "Max id value is 254"
@@ -313,9 +305,12 @@ proc createSink { id } {
     set mac_sink($id)       [new Module/UW/CSMA_ALOHA]
     set phy_data_sink($id)  [new Module/UW/AHOI/PHY]
 
-    for { set cnt 0} {$cnt < $opt(nn)} {incr cnt} {
-        $node_sink($id) addModule 7 $cbr_sink($id,$cnt) 0 "CBR"
+    foreach node_id $node_ids {
+        $node_sink($id) addModule 7 $cbr_sink($id,$node_id) 0 "CBR"
     }
+    #for { set cnt 0} {$cnt < $opt(nn)} {incr cnt} {
+    #    $node_sink($id) addModule 7 $cbr_sink($id,$cnt) 0 "CBR"
+    #}
     $node_sink($id) addModule 6 $udp_sink($id)       0 "UDP"
     $node_sink($id) addModule 5 $ipr_sink($id)       0 "IPR"
     $node_sink($id) addModule 4 $ipif_sink($id)      0 "IPF"
@@ -323,9 +318,12 @@ proc createSink { id } {
     $node_sink($id) addModule 2 $mac_sink($id)       0 "MAC"
     $node_sink($id) addModule 1 $phy_data_sink($id)  0 "PHY"
 
-    for { set cnt 0} {$cnt < $opt(nn)} {incr cnt} {
-        $node_sink($id) setConnection $cbr_sink($id,$cnt)  $udp_sink($id)      0
+    foreach node_id $node_ids {
+        $node_sink($id) setConnection $cbr_sink($id,$node_id)  $udp_sink($id)      0
     }
+    #for { set cnt 0} {$cnt < $opt(nn)} {incr cnt} {
+    #    $node_sink($id) setConnection $cbr_sink($id,$cnt)  $udp_sink($id)      0
+    #}
     $node_sink($id) setConnection $udp_sink($id)  $ipr_sink($id)            0
     $node_sink($id) setConnection $ipr_sink($id)  $ipif_sink($id)           0
     $node_sink($id) setConnection $ipif_sink($id) $mll_sink($id)            0
@@ -333,13 +331,16 @@ proc createSink { id } {
     $node_sink($id) setConnection $mac_sink($id)  $phy_data_sink($id)       0
     $node_sink($id) addToChannel  $channel   $phy_data_sink($id)       0
 
-    for { set cnt 0} {$cnt < $opt(nn)} {incr cnt} {
-        set portnum_sink($id,$cnt) [$udp_sink($id) assignPort $cbr_sink($id,$cnt)]
-        if {$cnt >= 252} {
-            puts "hostnum > 252!!! exiting"
-            exit
-        }
+    foreach node_id $node_ids {
+        set portnum_sink($id,$node_id) [$udp_sink($id) assignPort $cbr_sink($id,$node_id)]
     }
+    #for { set cnt 0} {$cnt < $opt(nn)} {incr cnt} {
+    #    set portnum_sink($id,$cnt) [$udp_sink($id) assignPort $cbr_sink($id,$cnt)]
+    #    if {$cnt >= 252} {
+    #        puts "hostnum > 252!!! exiting"
+    #        exit
+    #    }
+    #}
 
     $ipif_sink($id) addr $id
 
@@ -370,6 +371,14 @@ proc createSink { id } {
 }
 
 #################
+# Node id generation #
+#################
+set node_ids [list]
+for {set id 0} {$id < $opt(nn)} {incr id}  {
+    lappend node_ids $id
+}
+
+#################
 # Sink Creation #
 #################
 if {$opt(sink_mode) != 1 && $opt(sink_mode) != 3} {
@@ -381,74 +390,97 @@ for {set i 0} {$i < $opt(sink_mode)} {incr i}  {
     lappend sink_ids [expr 254 - $i]
 }
 
+$position_sink(254) setX_ [expr 5]
+$position_sink(254) setY_ [expr 5]
+$position_sink(254) setZ_ -100
+
 #################
 # Node Creation #
 #################
-set node_ids [list]
-for {set id 0} {$id < $opt(nn)} {incr id}  {
-    createNode $id
-    lappend node_ids $id
+foreach node_id $node_ids {
+    createNode $node_id
 }
 
 ################################
 # Inter-node module connection #
 ################################
-proc connectNodes {id1 des1} {
+proc connectNodeAndSink {node_id sink_id} {
     global ipif ipr portnum cbr cbr_sink ipif_sink portnum_sink ipr_sink opt
 
-    $cbr($id1,$des1) set destAddr_ [$ipif($des1) addr]
-    $cbr($id1,$des1) set destPort_ $portnum($des1,$id1)
+    $cbr($node_id,$sink_id) set destAddr_ [$ipif_sink($sink_id) addr]
+    $cbr($node_id,$sink_id) set destPort_ $portnum_sink($sink_id,$node_id)
 
-    $cbr($des1,$id1) set destAddr_ [$ipif($id1) addr]
-    $cbr($des1,$id1) set destPort_ $portnum($id1,$des1)
-
+    $cbr_sink($sink_id,$node_id) set destAddr_ [$ipif($node_id) addr]
+    $cbr_sink($sink_id,$node_id) set destPort_ $portnum($node_id,$sink_id)
 }
 
 ##################
 # Setup flows    #
 ##################
-for {set id1 0} {$id1 < $opt(nn)} {incr id1}  {
-	for {set id2 0} {$id2 < $opt(nn)} {incr id2}  {
-		if {$id1 != $id2} {
-			connectNodes $id1 $id2
-		}
-	}
+foreach sink_id $sink_ids {
+    foreach node_id $node_ids {
+        connectNodeAndSink $node_id $sink_id
+    }
 }
+#for {set id1 0} {$id1 < $opt(nn)} {incr id1}  {
+#	for {set id2 0} {$id2 < $opt(nn)} {incr id2}  {
+#		if {$id1 != $id2} {
+#			connectNodes $id1 $id2
+#		}
+#	}
+#}
 
 ##################
 # ARP tables     #
 ##################
-for {set id1 0} {$id1 < $opt(nn)} {incr id1}  {
-    for {set id2 0} {$id2 < $opt(nn)} {incr id2}  {
-      $mll($id1) addentry [$ipif($id2) addr] [$mac($id2) addr]
-	}
+foreach sink_id $sink_ids {
+    foreach node_id $node_ids {
+        $mll($node_id) addentry [$ipif_sink($sink_id) addr] [$mac_sink($sink_id) addr]
+    }
 }
+#for {set id1 0} {$id1 < $opt(nn)} {incr id1}  {
+#    for {set id2 0} {$id2 < $opt(nn)} {incr id2}  {
+#      $mll($id1) addentry [$ipif($id2) addr] [$mac($id2) addr]
+#	}
+#}
 
 
 
 ##################
 # Routing tables #
 ##################
-for {set id1 0} {$id1 < $opt(nn)} {incr id1}  {
-	for {set id2 0} {$id2 < $opt(nn)} {incr id2}  {
-			set ip_value [expr $id2 + 1]
-            $ipr($id1) addRoute ${ip_value} ${ip_value}
-	}
+foreach sink_id $sink_ids {
+    foreach node_id $node_ids {
+        # set src [expr $node_id]
+        $ipr($node_id) addRoute $sink_id $sink_id
+    }
 }
+#for {set id1 0} {$id1 < $opt(nn)} {incr id1}  {
+#	for {set id2 0} {$id2 < $opt(nn)} {incr id2}  {
+#			set ip_value [expr $id2 + 1]
+#            $ipr($id1) addRoute ${ip_value} ${ip_value}
+#	}
+#}
 
 #####################
 # Start/Stop Timers #
 #####################
 # Set here the timers to start and/or stop modules (optional)
 # e.g.,
-for {set id1 0} {$id1 < $opt(nn)} {incr id1}  {
-	for {set id2 0} {$id2 < $opt(nn)} {incr id2} {
-		if {$id1 != $id2} {
-			$ns at $opt(starttime)    "$cbr($id1,$id2) start"
-			$ns at $opt(stoptime)     "$cbr($id1,$id2) stop"
-		}
-	}
+foreach sink_id $sink_ids {
+    foreach node_id $node_ids {
+        $ns at $opt(starttime)    "$cbr($node_id,$sink_id) start"
+        $ns at $opt(stoptime)     "$cbr($node_id,$sink_id) stop"
+    }
 }
+#for {set id1 0} {$id1 < $opt(nn)} {incr id1}  {
+#	for {set id2 0} {$id2 < $opt(nn)} {incr id2} {
+#		if {$id1 != $id2} {
+#			$ns at $opt(starttime)    "$cbr($id1,$id2) start"
+#			$ns at $opt(stoptime)     "$cbr($id1,$id2) stop"
+#		}
+#	}
+#}
 
 ###################
 # Final Procedure #
@@ -460,6 +492,7 @@ proc finish {} {
     global node_coordinates
     global ipr_sink ipr ipif udp cbr phy phy_data_sink
     global node_stats tmp_node_stats sink_stats tmp_sink_stats
+    global sink_ids node_ids
     if ($opt(verbose)) {
         puts "---------------------------------------------------------------------"
         puts "Simulation summary"
@@ -486,27 +519,24 @@ proc finish {} {
     set sum_rtx                0.0
     set cbr_throughput         0.0
     set cbr_per                0.0
-    for {set i 0} {$i < $opt(nn)} {incr i}  {
-		for {set j 0} {$j < $opt(nn)} {incr j} {
-			if {$i != $j} {
-                set cbr_throughput              [$cbr($i,$j) getthr]
-                set cbr_per                     [$cbr($i,$j) getper]
-				set cbr_sent_pkts               [$cbr($i,$j) getsentpkts]
-				set cbr_rcv_pkts                [$cbr($i,$j) getrecvpkts]
-			}
+    foreach sink_id $sink_ids {
+        foreach node_id $node_ids {
+            set cbr_throughput              [$cbr($node_id,$sink_id) getthr]
+            set cbr_per                     [$cbr($node_id,$sink_id) getper]
+            set cbr_sent_pkts               [$cbr($node_id,$sink_id) getsentpkts]
+            set cbr_rcv_pkts                [$cbr_sink($sink_id,$node_id) getrecvpkts]
+
 			if ($opt(verbose)) {
-                if {$i != $j} {
-				    puts "cbr($i,$j) Throughput     : $cbr_throughput"
-                    puts "cbr($i,$j) PER            : $cbr_per       "
-                    puts "-------------------------------------------"
-                }
+                puts "cbr($node_id,$sink_id) Throughput     : $cbr_throughput"
+                puts "cbr($node_id,$sink_id) PER            : $cbr_per       "
+                puts "-------------------------------------------"
 			}
 		}
-        if {$opt(ack_mode) == "setAckMode"} {
-            set DataPktsTx                  [$mac($i) getDataPktsTx]
-            set UpDataPktsRx                [$mac($i) getUpLayersDataRx]
-            set rtx                         [expr (($DataPktsTx/$cbr_rcv_pkts) - 1)]
-        }
+        #if {$opt(ack_mode) == "setAckMode"} {
+        #    set DataPktsTx                  [$mac($i) getDataPktsTx]
+        #    set UpDataPktsRx                [$mac($i) getUpLayersDataRx]
+        #    set rtx                         [expr (($DataPktsTx/$cbr_rcv_pkts) - 1)]
+        #}
 
         set sum_cbr_throughput [expr $sum_cbr_throughput + $cbr_throughput]
         set sum_cbr_sent_pkts [expr $sum_cbr_sent_pkts + $cbr_sent_pkts]
@@ -518,7 +548,7 @@ proc finish {} {
 
     set ipheadersize        [$ipif(1) getipheadersize]
     set udpheadersize       [$udp(1) getudpheadersize]
-    set cbrheadersize       [$cbr(1,0) getcbrheadersize]
+    set cbrheadersize       [$cbr(1,254) getcbrheadersize]
 
     if ($opt(verbose)) {
         puts "Mean Throughput           : [expr ($sum_cbr_throughput/(($opt(nn))*($opt(nn)-1)))]"
