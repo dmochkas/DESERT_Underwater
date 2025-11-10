@@ -61,13 +61,17 @@
 #   |    UnderwaterChannel    |-------------------
 #   +-------------------------+
 
-# TODO: Positioning
+# TODO: Positioning +
 # TODO: Sleep mode
 # TODO: Broadcast messages (filter repetitions)
 # TODO: Improve statistics
-# TODO: Message replication
+# TODO: Message replication +
 # TODO: Energy consumption
-# TODO: Downlink ?
+# TODO: Downlink ? -
+# TODO: Triple messages
+# TODO: Test if I can set different cbr period
+# TODO: Print pretty statistic and feed it to the python script
+# TODO: Make sure 300m distance
 
 ######################################
 # Flags to enable or disable options #
@@ -89,7 +93,8 @@ load libuwstaticrouting.so
 load libuwmll.so
 load libuwudp.so
 load libuwcbr.so
-load libuwcsmaaloha.so
+#load libuwcsmaaloha.so
+load libuwaloha.so
 load libuwinterference.so
 load libUwmStd.so
 load libuwphy_clmsgs.so
@@ -107,8 +112,8 @@ $ns use-Miracle
 # Tcl variables  #
 ##################
 set opt(nn)                 4 ;# Number of Nodes
-set opt(sink_mode)          1   ;# 1 or 3 values are possible
-set opt(pktsize)            32  ;# Pkt sike in byte
+set opt(sink_mode)          3   ;# 1 or 3 values are possible
+set opt(pktsize)            20  ;# Pkt sike in byte
 set opt(starttime)          1
 set opt(stoptime)           10000
 set opt(txduration)         [expr $opt(stoptime) - $opt(starttime)] ;# Duration of the simulation
@@ -119,10 +124,9 @@ set opt(max_range)          100  ;# Max transmission range
 set opt(maxinterval_)       200.0
 set opt(freq)               50000.0 ;#Frequency used in Hz
 set opt(bw)                 25000.0 ;#Bandwidth used in Hz
-set opt(bitrate)            195.3 ;#150000;#bitrate in bps
-set opt(cbr_period) 60
-set opt(pktsize)	32
-set opt(rngstream)	1
+set opt(bitrate)            260 ;#150000;#bitrate in bps
+set opt(cbr_period) 1000
+set opt(rngstream)	10
 
 if {$opt(bash_parameters)} {
 	if {$argc != 3} {
@@ -166,7 +170,6 @@ if {$opt(trace_files)} {
 }
 
 set BROADCAST_ADDRESS 255
-set BROADCAST_PORT    4000
 
 MPropagation/Underwater set practicalSpreading_ 1.8
 MPropagation/Underwater set debug_              0
@@ -186,10 +189,7 @@ $data_mask setBandwidth  $opt(bw)
 Module/UW/CBR set packetSize_          $opt(pktsize)
 Module/UW/CBR set period_              $opt(cbr_period)
 Module/UW/CBR set PoissonTraffic_      1
-Module/UW/CBR set debug_               1
-
-Module/UW/MLL set debug_               1
-Module/UW/IP  set debug_               1
+Module/UW/CBR set debug_               0
 
 Module/UW/AHOI/PHY  set BitRate_                    $opt(bitrate)
 Module/UW/AHOI/PHY  set AcquisitionThreshold_dB_    5.0
@@ -225,25 +225,18 @@ proc createNode { id } {
     }
 
     set node($id) [$ns create-M_Node $opt(tracefile) $opt(cltracefile)]
-    #foreach sink_id $sink_ids {
-	#	set cbr($id,$sink_id)  [new Module/UW/CBR]
-    #}
 
     set cbr($id)  [new Module/UW/CBR]
     set udp($id)  [new Module/UW/UDP]
     set ipr($id)  [new Module/UW/StaticRouting]
     set ipif($id) [new Module/UW/IP]
     set mll($id)  [new Module/UW/MLL]
-    set mac($id)  [new Module/UW/CSMA_ALOHA]
+    set mac($id)  [new Module/UW/ALOHA]
     set phy($id)  [new Module/UW/AHOI/PHY]
 
-    $ipr($id) setLog 3 "log_ip_$id.out"
-    $udp($id) setLog 3 "log_udp_$id.out"
-    $cbr($id) setLog 3 "log_cbr_$id.out"
-
-	#foreach sink_id $sink_ids {
-	#    $node($id) addModule 7 $cbr($id,$sink_id)   1  "CBR"
-	#}
+    #$ipr($id) setLog 3 "log_ip_$id.out"
+    #$udp($id) setLog 3 "log_udp_$id.out"
+    #$cbr($id) setLog 3 "log_cbr_$id.out"
 
 	$node($id) addModule 7 $cbr($id)   1  "CBR"
     $node($id) addModule 6 $udp($id)   1  "UDP"
@@ -252,11 +245,6 @@ proc createNode { id } {
     $node($id) addModule 3 $mll($id)   1  "MLL"
     $node($id) addModule 2 $mac($id)   1  "MAC"
     $node($id) addModule 1 $phy($id)   0  "PHY"
-
-	#foreach sink_id $sink_ids {
-	#	$node($id) setConnection $cbr($id,$sink_id)   $udp($id)   1
-	#	set portnum($id,$sink_id) [$udp($id) assignPort $cbr($id,$sink_id)]
-	#}
 
 	# We do only broadcast
     $node($id) setConnection $cbr($id)   $udp($id)   1
@@ -296,12 +284,6 @@ proc createNode { id } {
     $mac($id) initialize
 }
 
-set cbr_sink       [new Module/UW/CBR]
-#set udp_sink       [new Module/UW/UDP]
-#set portnum_sink   [$udp_sink assignPort $cbr_sink]
-#
-#$udp_sink setLog 3 "log_udp.out"
-
 proc createSink { id } {
 
     global channel propagation smask data_mask ns cbr_sink position_sink node_sink udp_sink portnum_sink interf_data_sink
@@ -320,24 +302,25 @@ proc createSink { id } {
 
     set node_sink($id) [$ns create-M_Node $opt(tracefile) $opt(cltracefile)]
 
-    #for {set cnt 0} {$cnt < $opt(nn)} {incr cnt} {
-    #    set cbr_sink($id,$cnt)  [new Module/UW/CBR]
-    #}
+    foreach node_id $node_ids {
+        set cbr_sink($id,$node_id)  [new Module/UW/CBR]
+    }
     set udp_sink($id)       [new Module/UW/UDP]
     set ipr_sink($id)       [new Module/UW/StaticRouting]
     set ipif_sink($id)      [new Module/UW/IP]
     set mll_sink($id)       [new Module/UW/MLL]
-    set mac_sink($id)       [new Module/UW/CSMA_ALOHA]
+    set mac_sink($id)       [new Module/UW/ALOHA]
     set phy_data_sink($id)  [new Module/UW/AHOI/PHY]
 
-    #foreach node_id $node_ids {
-    #    $node_sink($id) addModule 7 $cbr_sink($id,$node_id) 0 "CBR"
-    #}
-    #for { set cnt 0} {$cnt < $opt(nn)} {incr cnt} {
-    #    $node_sink($id) addModule 7 $cbr_sink($id,$cnt) 0 "CBR"
-    #}
+    #$ipr($id) setLog 3 "log_ip_$id.out"
+    #$udp($id) setLog 3 "log_udp_$id.out"
+    $cbr_sink($id,$node_id) setLog 3 "log_cbr_$id.out"
+    #$udp_sink($id) setLog 3 "log_$id.out"
 
-    $node_sink($id) addModule 7 $cbr_sink 0 "CBR"
+    foreach node_id $node_ids {
+        $node_sink($id) addModule 7 $cbr_sink($id,$node_id) 0 "CBR"
+    }
+
     $node_sink($id) addModule 6 $udp_sink($id)       0 "UDP"
     $node_sink($id) addModule 5 $ipr_sink($id)       0 "IPR"
     $node_sink($id) addModule 4 $ipif_sink($id)      0 "IPF"
@@ -345,14 +328,10 @@ proc createSink { id } {
     $node_sink($id) addModule 2 $mac_sink($id)       0 "MAC"
     $node_sink($id) addModule 1 $phy_data_sink($id)  0 "PHY"
 
-    #foreach node_id $node_ids {
-    #    $node_sink($id) setConnection $cbr_sink($id,$node_id)  $udp_sink($id)      0
-    #}
-    #for { set cnt 0} {$cnt < $opt(nn)} {incr cnt} {
-    #    $node_sink($id) setConnection $cbr_sink($id,$cnt)  $udp_sink($id)      0
-    #}
+    foreach node_id $node_ids {
+        $node_sink($id) setConnection $cbr_sink($id,$node_id)  $udp_sink($id)      0
+    }
 
-    $node_sink($id) setConnection $cbr_sink  $udp_sink($id)      0
     $node_sink($id) setConnection $udp_sink($id)  $ipr_sink($id)            0
     $node_sink($id) setConnection $ipr_sink($id)  $ipif_sink($id)           0
     $node_sink($id) setConnection $ipif_sink($id) $mll_sink($id)            0
@@ -360,19 +339,9 @@ proc createSink { id } {
     $node_sink($id) setConnection $mac_sink($id)  $phy_data_sink($id)       0
     $node_sink($id) addToChannel  $channel   $phy_data_sink($id)       0
 
-    set portnum_sink [$udp_sink($id) assignPort $cbr_sink]
-    puts "Port: $portnum_sink"
-
-    #foreach node_id $node_ids {
-    #    set portnum_sink($node_id) [$udp_sink($id) assignPort $cbr_sink($node_id)]
-    #}
-    #for { set cnt 0} {$cnt < $opt(nn)} {incr cnt} {
-    #    set portnum_sink($id,$cnt) [$udp_sink($id) assignPort $cbr_sink($id,$cnt)]
-    #    if {$cnt >= 252} {
-    #        puts "hostnum > 252!!! exiting"
-    #        exit
-    #    }
-    #}
+    foreach node_id $node_ids {
+        set portnum_sink($id,$node_id) [$udp_sink($id) assignPort $cbr_sink($id,$node_id)]
+    }
 
     $ipif_sink($id) addr $id
 
@@ -380,8 +349,6 @@ proc createSink { id } {
     $node_sink($id) addPosition $position_sink($id)
     set posdb_sink($id) [new "PlugIn/PositionDB"]
     $node_sink($id) addPlugin $posdb_sink($id) 20 "PDB"
-
-    # TODO: Figure what this line does
     $posdb_sink($id) addpos [$ipif_sink($id) addr] $position_sink($id)
 
     #Interference model
@@ -456,91 +423,50 @@ foreach node_id $node_ids {
 ################################
 # Inter-node module connection #
 ################################
-proc connectNodeAndSink {node_id sink_id} {
+proc connectNodeAndSink {node_id} {
     global ipif ipr portnum cbr cbr_sink ipif_sink portnum_sink ipr_sink opt
     global BROADCAST_ADDRESS
 
     #$cbr($node_id,$sink_id) set destAddr_ [$ipif_sink($sink_id) addr]
-    $cbr($node_id) set destAddr_ 0xff
-    #$cbr($node_id) set destAddr_ [$ipif_sink($sink_id) addr]
-    #$cbr($node_id,$sink_id) set destPort_ $portnum_sink($sink_id,$node_id)
-    $cbr($node_id) set destPort_ $portnum_sink
+    $cbr($node_id) set destAddr_ $BROADCAST_ADDRESS
 
-    puts "Port: $portnum_sink"
-
-    #$cbr_sink($sink_id,$node_id) set destAddr_ [$ipif($node_id) addr]
-    #$cbr_sink($sink_id,$node_id) set destPort_ $portnum($node_id,$sink_id)
+    # Ports are syncronized for each sink
+    $cbr($node_id) set destPort_ $portnum_sink(254,$node_id)
 }
 
 ##################
 # Setup flows    #
 ##################
-foreach sink_id $sink_ids {
-    foreach node_id $node_ids {
-        connectNodeAndSink $node_id $sink_id
-    }
+foreach node_id $node_ids {
+    connectNodeAndSink $node_id
 }
-#for {set id1 0} {$id1 < $opt(nn)} {incr id1}  {
-#	for {set id2 0} {$id2 < $opt(nn)} {incr id2}  {
-#		if {$id1 != $id2} {
-#			connectNodes $id1 $id2
-#		}
-#	}
-#}
 
 ##################
 # ARP tables     #
 ##################
-foreach node_id $node_ids {
-    foreach sink_id $sink_ids {
-        $mll($node_id) addentry [$ipif_sink($sink_id) addr] [$mac_sink($sink_id) addr]
-        $mll($node_id) addentry 255 [$mac_sink($sink_id) addr]
-    }
-}
-#for {set id1 0} {$id1 < $opt(nn)} {incr id1}  {
-#    for {set id2 0} {$id2 < $opt(nn)} {incr id2}  {
-#      $mll($id1) addentry [$ipif($id2) addr] [$mac($id2) addr]
-#	}
+#foreach node_id $node_ids {
+#    foreach sink_id $sink_ids {
+#        #$mll($node_id) addentry [$ipif_sink($sink_id) addr] [$mac_sink($sink_id) addr]
+#        #$mll($node_id) addentry 255 [$mac_sink($sink_id) addr]
+#    }
 #}
-
-
 
 ##################
 # Routing tables #
 ##################
 foreach node_id $node_ids {
-    foreach sink_id $sink_ids {
-        # set src [expr $node_id]
-        $ipr($node_id) addRoute $sink_id $sink_id
-    }
     $ipr($node_id) addRoute 255 255
 }
-#for {set id1 0} {$id1 < $opt(nn)} {incr id1}  {
-#	for {set id2 0} {$id2 < $opt(nn)} {incr id2}  {
-#			set ip_value [expr $id2 + 1]
-#            $ipr($id1) addRoute ${ip_value} ${ip_value}
-#	}
-#}
 
 #####################
 # Start/Stop Timers #
 #####################
-# Set here the timers to start and/or stop modules (optional)
-# e.g.,
 foreach sink_id $sink_ids {
     foreach node_id $node_ids {
         $ns at $opt(starttime)    "$cbr($node_id) start"
         $ns at $opt(stoptime)     "$cbr($node_id) stop"
     }
 }
-#for {set id1 0} {$id1 < $opt(nn)} {incr id1}  {
-#	for {set id2 0} {$id2 < $opt(nn)} {incr id2} {
-#		if {$id1 != $id2} {
-#			$ns at $opt(starttime)    "$cbr($id1,$id2) start"
-#			$ns at $opt(stoptime)     "$cbr($id1,$id2) stop"
-#		}
-#	}
-#}
 
 ###################
 # Final Procedure #
@@ -580,16 +506,6 @@ proc finish {} {
     set cbr_throughput         0.0
     set cbr_per                0.0
 
-    set cbr_rcv_pkts                [$cbr_sink getrecvpkts]
-    set cbr_sink_throughput         [$cbr_sink getthr]
-    set cbr_sink_per                [$cbr_sink getper]
-
-    if ($opt(verbose)) {
-        puts "cbr_sink Throughput     : $cbr_sink_throughput"
-        puts "cbr_sink PER            : $cbr_sink_per"
-        puts "-------------------------------------------"
-    }
-
     foreach node_id $node_ids {
         set position_x              [$position($node_id) getX_]
         set position_y              [$position($node_id) getY_]
@@ -600,15 +516,32 @@ proc finish {} {
         puts "position($node_id) X     : $position_x"
         puts "position($node_id) Y     : $position_y"
         puts "cbr($node_id) Throughput     : $cbr_throughput"
+        puts "cbr($node_id) Packets sent   : $cbr_sent_pkts"
         puts "cbr($node_id) PER            : $cbr_per       "
+
+        #set cbr_rcv_pkts                [$cbr_sink(254,$node_id) getrecvpkts]
+        #set cbr_sink_throughput         [$cbr_sink(254,$node_id) getthr]
+        #set cbr_sink_per                [$cbr_sink(254,$node_id) getper]
         set sum_cbr_sent_pkts [expr $sum_cbr_sent_pkts + $cbr_sent_pkts]
+
+        foreach sink_id $sink_ids {
+            set cbr_rcv_pkts                [$cbr_sink($sink_id,$node_id) getrecvpkts]
+            set cbr_sink_throughput         [$cbr_sink($sink_id,$node_id) getthr]
+            set cbr_sink_per                [$cbr_sink($sink_id,$node_id) getper]
+            if ($opt(verbose)) {
+                puts "cbr_sink($sink_id) Throughput     : $cbr_sink_throughput"
+                puts "cbr_sink($sink_id) PER            : $cbr_sink_per"
+                puts "cbr_sink($sink_id) Recv           : $cbr_rcv_pkts"
+                puts "-------------------------------------------"
+            }
+            set sum_cbr_rcv_pkts  [expr $sum_cbr_rcv_pkts + $cbr_rcv_pkts]
+        }
     }
 
-    set ipheadersize        [$ipif(1) getipheadersize]
-    set udpheadersize       [$udp(1) getudpheadersize]
-    set cbrheadersize       [$cbr(1) getcbrheadersize]
+    set ipheadersize        [$ipif(0) getipheadersize]
+    set udpheadersize       [$udp(0) getudpheadersize]
+    set cbrheadersize       [$cbr(0) getcbrheadersize]
     set sum_cbr_throughput [expr $sum_cbr_throughput + $cbr_sink_throughput]
-    set sum_cbr_rcv_pkts  [expr $sum_cbr_rcv_pkts + $cbr_rcv_pkts]
 
 
     if ($opt(verbose)) {
@@ -624,7 +557,7 @@ proc finish {} {
         }
         puts "---------------------------------------------------------------------"
         puts "- Example of PHY layer statistics for node 1 -"
-        puts "Tot. pkts lost            : [$phy(1) getTotPktsLost]"
+        puts "Tot. pkts lost            : [$phy(0) getTotPktsLost]"
         puts "done!"
     }
 
