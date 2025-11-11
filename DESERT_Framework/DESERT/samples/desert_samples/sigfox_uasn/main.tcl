@@ -63,14 +63,14 @@
 
 # TODO: Positioning +
 # TODO: Sleep mode
-# TODO: Broadcast messages (filter repetitions)
-# TODO: Improve statistics
+# TODO: Broadcast messages (filter repetitions) +
+# TODO: Improve statistics <--- next
 # TODO: Message replication +
 # TODO: Energy consumption
 # TODO: Downlink ? -
-# TODO: Triple messages
+# TODO: Triple messages +
 # TODO: Test if I can set different cbr period
-# TODO: Print pretty statistic and feed it to the python script
+# TODO: Print pretty statistic and feed it to the python script (x,y,n_msg_sent,sink1,sink2,sink3)
 # TODO: Make sure 300m distance
 
 ######################################
@@ -91,6 +91,7 @@ load libmmac.so
 load libuwip.so
 load libuwstaticrouting.so
 load libuwmll.so
+load libuwreplicator.so
 load libuwudp.so
 load libuwcbr.so
 #load libuwcsmaaloha.so
@@ -111,9 +112,11 @@ $ns use-Miracle
 ##################
 # Tcl variables  #
 ##################
-set opt(nn)                 4 ;# Number of Nodes
-set opt(sink_mode)          3   ;# 1 or 3 values are possible
-set opt(pktsize)            20  ;# Pkt sike in byte
+set opt(nn)                 1  ;# Number of Nodes
+set opt(sink_mode)          1  ;# 1 or 3 sinks are possible
+set opt(pktsize)            20 ;# Pkt sike in byte
+set opt(replica_mode)       3  ;# 1 or 3 replicas are possible
+set opt(replica_spacing)    0.5
 set opt(starttime)          1
 set opt(stoptime)           10000
 set opt(txduration)         [expr $opt(stoptime) - $opt(starttime)] ;# Duration of the simulation
@@ -191,6 +194,12 @@ Module/UW/CBR set period_              $opt(cbr_period)
 Module/UW/CBR set PoissonTraffic_      1
 Module/UW/CBR set debug_               0
 
+if {$opt(replica_mode) != 1 && $opt(replica_mode) != 3} {
+    error "Invalid replica mode $opt(replica_mode)"
+}
+Module/UW/REPL set replicas_     $opt(replica_mode)
+Module/UW/REPL set spacing_      $opt(replica_spacing)
+
 Module/UW/AHOI/PHY  set BitRate_                    $opt(bitrate)
 Module/UW/AHOI/PHY  set AcquisitionThreshold_dB_    5.0
 Module/UW/AHOI/PHY  set RxSnrPenalty_dB_            0
@@ -231,6 +240,7 @@ proc createNode { id } {
     set ipr($id)  [new Module/UW/StaticRouting]
     set ipif($id) [new Module/UW/IP]
     set mll($id)  [new Module/UW/MLL]
+    set rep($id)  [new Module/UW/REPL]
     set mac($id)  [new Module/UW/ALOHA]
     set phy($id)  [new Module/UW/AHOI/PHY]
 
@@ -238,11 +248,12 @@ proc createNode { id } {
     #$udp($id) setLog 3 "log_udp_$id.out"
     #$cbr($id) setLog 3 "log_cbr_$id.out"
 
-	$node($id) addModule 7 $cbr($id)   1  "CBR"
-    $node($id) addModule 6 $udp($id)   1  "UDP"
-    $node($id) addModule 5 $ipr($id)   1  "IPR"
-    $node($id) addModule 4 $ipif($id)  1  "IPF"
-    $node($id) addModule 3 $mll($id)   1  "MLL"
+	$node($id) addModule 8 $cbr($id)   1  "CBR"
+    $node($id) addModule 7 $udp($id)   1  "UDP"
+    $node($id) addModule 6 $ipr($id)   1  "IPR"
+    $node($id) addModule 5 $ipif($id)  1  "IPF"
+    $node($id) addModule 4 $mll($id)   1  "MLL"
+    $node($id) addModule 3 $rep($id)   1  "REP"
     $node($id) addModule 2 $mac($id)   1  "MAC"
     $node($id) addModule 1 $phy($id)   0  "PHY"
 
@@ -252,7 +263,8 @@ proc createNode { id } {
     $node($id) setConnection $udp($id)      $ipr($id)   1
     $node($id) setConnection $ipr($id)      $ipif($id)  1
     $node($id) setConnection $ipif($id)     $mll($id)   1
-    $node($id) setConnection $mll($id)      $mac($id)   1
+    $node($id) setConnection $mll($id)      $rep($id)   1
+    $node($id) setConnection $rep($id)      $mac($id)   1
     $node($id) setConnection $mac($id)      $phy($id)   1
     $node($id) addToChannel  $channel       $phy($id)   1
 

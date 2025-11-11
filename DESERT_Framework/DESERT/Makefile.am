@@ -99,9 +99,10 @@ SUBDIRS = m4 \
     data_link/uwtdma-frame \
     data_link/uwtokenbus \
     data_link/uwjammer \
+    data_link/uwreplicator \
     channel/uwem_channel \
     channel/uwoptical_channel \
     ranging/uwranging_tokenbus \
     ranging/uwranging_tdma \
     ranging/uwtap \
-    ranging/uwranging_tdoa 
+    ranging/uwranging_tdoa
