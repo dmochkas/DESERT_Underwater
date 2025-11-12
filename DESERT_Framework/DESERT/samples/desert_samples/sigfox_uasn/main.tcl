@@ -64,21 +64,22 @@
 # TODO: Positioning +
 # TODO: Sleep mode
 # TODO: Broadcast messages (filter repetitions) +
-# TODO: Improve statistics <--- next
+# TODO: Improve statistics +
 # TODO: Message replication +
 # TODO: Energy consumption
 # TODO: Downlink ? -
 # TODO: Triple messages +
-# TODO: Test if I can set different cbr period
-# TODO: Print pretty statistic and feed it to the python script (x,y,n_msg_sent,sink1,sink2,sink3)
+# TODO: Test if I can set different cbr period ???
+# TODO: Print pretty statistic and feed it to the python script (x,y,n_msg_sent,sink1,sink2,sink3) +
 # TODO: Make sure 300m distance
+# TODO: Enable bash parameters + and create a bash script
 
 ######################################
 # Flags to enable or disable options #
 ######################################
 set opt(verbose) 			1
 set opt(trace_files)		1
-set opt(bash_parameters) 	0
+set opt(bash_parameters) 	1
 set opt(ACK_Active)         0
 
 #####################
@@ -94,7 +95,6 @@ load libuwmll.so
 load libuwreplicator.so
 load libuwudp.so
 load libuwcbr.so
-#load libuwcsmaaloha.so
 load libuwaloha.so
 load libuwinterference.so
 load libUwmStd.so
@@ -112,41 +112,40 @@ $ns use-Miracle
 ##################
 # Tcl variables  #
 ##################
-set opt(nn)                 1  ;# Number of Nodes
-set opt(sink_mode)          1  ;# 1 or 3 sinks are possible
+set opt(nn)                 4  ;# Number of Nodes
+set opt(sink_mode)          3  ;# 1 or 3 sinks are possible
 set opt(pktsize)            20 ;# Pkt sike in byte
 set opt(replica_mode)       3  ;# 1 or 3 replicas are possible
 set opt(replica_spacing)    0.5
 set opt(starttime)          1
-set opt(stoptime)           10000
+set opt(stoptime)           86400 ;# One day 10000 ;#
 set opt(txduration)         [expr $opt(stoptime) - $opt(starttime)] ;# Duration of the simulation
 
 set opt(txpower)            156.0  ;#Power transmitted in dB re uPa
-set opt(max_range)          100  ;# Max transmission range
+set opt(max_range)          100    ;# Max transmission range
 
 set opt(maxinterval_)       200.0
 set opt(freq)               50000.0 ;#Frequency used in Hz
 set opt(bw)                 25000.0 ;#Bandwidth used in Hz
-set opt(bitrate)            260 ;#150000;#bitrate in bps
+set opt(bitrate)            260     ;#Bitrate in bps
 set opt(cbr_period) 1000
 set opt(rngstream)	10
 
 if {$opt(bash_parameters)} {
-	if {$argc != 3} {
-		puts "The script requires three inputs:"
-		puts "- the first for the seed"
-		puts "- the second one is for the Poisson CBR period"
-		puts "- the third one is the cbr packet size (byte);"
-		puts "example: ns test_uw_csma_aloha_fully_connected.tcl 1 60 125"
-		puts "If you want to leave the default values, please set to 0"
-		puts "the value opt(bash_parameters) in the tcl script"
-		puts "Please try again."
-		return
-	} else {
-		set opt(rngstream)    [lindex $argv 0]
-		set opt(cbr_period) [lindex $argv 1]
-		set opt(pktsize)    [lindex $argv 2]
-	}
+    set opt(finish_mode)        "export" ;# diag or export
+    set opts(0) rngstream
+    set opts(1) nn
+    set opts(2) cbr_period
+    set opts(3) sink_mode
+    set opts(4) finish_mode
+    for {set i 0} {$i < [array size opts]} {incr i} {
+        set tmp [lindex $argv $i]
+        if {$tmp != 0 && $tmp != ""} {
+            set opt($opts($i)) $tmp
+        }
+    }
+} else {
+    set opt(finish_mode)        "diag" ;# diag or export
 }
 
 if {$opt(ACK_Active)} {
@@ -244,9 +243,9 @@ proc createNode { id } {
     set mac($id)  [new Module/UW/ALOHA]
     set phy($id)  [new Module/UW/AHOI/PHY]
 
-    #$ipr($id) setLog 3 "log_ip_$id.out"
-    #$udp($id) setLog 3 "log_udp_$id.out"
-    #$cbr($id) setLog 3 "log_cbr_$id.out"
+    #$ipr($id) setLog 3 "log_ip.out"
+    #$udp($id) setLog 3 "log_udp.out"
+    #$cbr($id) setLog 3 "log_cbr.out"
 
 	$node($id) addModule 8 $cbr($id)   1  "CBR"
     $node($id) addModule 7 $udp($id)   1  "UDP"
@@ -324,10 +323,9 @@ proc createSink { id } {
     set mac_sink($id)       [new Module/UW/ALOHA]
     set phy_data_sink($id)  [new Module/UW/AHOI/PHY]
 
-    #$ipr($id) setLog 3 "log_ip_$id.out"
-    #$udp($id) setLog 3 "log_udp_$id.out"
-    $cbr_sink($id,$node_id) setLog 3 "log_cbr_$id.out"
-    #$udp_sink($id) setLog 3 "log_$id.out"
+    #$ipr($id) setLog 3 "log_ip.out"
+    #$cbr_sink($id,$node_id) setLog 3 "log_cbr.out"
+    $udp_sink($id) setLog 3 "log_udp.out"
 
     foreach node_id $node_ids {
         $node_sink($id) addModule 7 $cbr_sink($id,$node_id) 0 "CBR"
@@ -480,11 +478,10 @@ foreach sink_id $sink_ids {
     }
 }
 
-###################
-# Final Procedure #
-###################
-# Define here the procedure to call at the end of the simulation
-proc finish {} {
+###############
+# Diagnostics #
+###############
+proc finish_diag {} {
     global ns opt outfile
     global mac propagation cbr_sink mac_sink phy phy_data_sink channel db_manager propagation
     global node_coordinates position
@@ -577,12 +574,108 @@ proc finish {} {
     close $opt(tracefile)
 }
 
+##########
+# Export #
+##########
+proc finish_export {} {
+    global opt mac propagation cbr_sink mac_sink phy phy_data_sink channel db_manager propagation
+    global node_coordinates position
+    global ipr_sink ipr ipif udp cbr phy phy_data_sink
+    global node_stats tmp_node_stats sink_stats tmp_sink_stats
+    global sink_ids node_ids
+
+    if ($opt(verbose)) {
+        puts "Simulation summary"
+        puts "--------------------------------------"
+        puts "number of nodes  : $opt(nn)"
+        puts "sink mode        : $opt(sink_mode)"
+        puts "replicas         : $opt(replica_mode)"
+        puts "packet size      : $opt(pktsize) byte"
+        puts "cbr period       : $opt(cbr_period) s"
+        puts "simulation length: $opt(txduration) s"
+        puts "tx power         : $opt(txpower) dB"
+        puts "tx frequency     : $opt(freq) Hz"
+        puts "tx bandwidth     : $opt(bw) Hz"
+        puts "bitrate          : $opt(bitrate) bps"
+        puts "--------------------------------------"
+    }
+    set sum_cbr_throughput     0
+    set sum_per                0
+    set sum_cbr_sent_pkts      0.0
+    set sum_cbr_rcv_pkts       0.0
+    set sum_rtx                0.0
+    set cbr_throughput         0.0
+    set cbr_per                0.0
+
+    puts "ID,x,y,n_pkts,sink1_rcv_pkts,sink1_per,sink1_throughput,sink2_rcv_pkts,sink2_per,sink2_throughput,sink3_rcv_pkts,sink3_per,sink3_throughput,avg_per"
+    foreach node_id $node_ids {
+        set line "$node_id,"
+        set position_x                  [$position($node_id) getX_]
+        set position_y                  [$position($node_id) getY_]
+        set cbr_throughput              [$cbr($node_id) getthr]
+        set cbr_per                     [$cbr($node_id) getper]
+        set cbr_sent_pkts               [$cbr($node_id) getsentpkts]
+        set sink_sum_rcv_pkts           0
+
+        append line "[format "%.2f" $position_x],[format "%.2f" $position_y],$cbr_sent_pkts,"
+        #puts "position($node_id) X     : $position_x"
+        #puts "position($node_id) Y     : $position_y"
+        #puts "cbr($node_id) Throughput     : $cbr_throughput"
+        #puts "cbr($node_id) Packets sent   : $cbr_sent_pkts"
+        #puts "cbr($node_id) PER            : $cbr_per       "
+
+        #set cbr_rcv_pkts                [$cbr_sink(254,$node_id) getrecvpkts]
+        #set cbr_sink_throughput         [$cbr_sink(254,$node_id) getthr]
+        #set cbr_sink_per                [$cbr_sink(254,$node_id) getper]
+
+        foreach sink_id $sink_ids {
+            set cbr_rcv_pkts                [$cbr_sink($sink_id,$node_id) getrecvpkts]
+            set cbr_sink_throughput         [$cbr_sink($sink_id,$node_id) getthr]
+            set cbr_sink_per                [$cbr_sink($sink_id,$node_id) getper]
+
+            append line "$cbr_rcv_pkts,[format "%.2f" $cbr_sink_per],[format "%.2f" $cbr_sink_throughput],"
+
+            #puts "cbr_sink($sink_id) Throughput     : $cbr_sink_throughput"
+            #puts "cbr_sink($sink_id) PER            : $cbr_sink_per"
+            #puts "cbr_sink($sink_id) Recv           : $cbr_rcv_pkts"
+            #puts "-------------------------------------------"
+            set sink_sum_rcv_pkts  [expr $sink_sum_rcv_pkts + $cbr_rcv_pkts]
+        }
+
+        set sum_cbr_rcv_pkts  [expr $sum_cbr_rcv_pkts + $sink_sum_rcv_pkts]
+
+        if {$opt(sink_mode) == 1} {
+            append line "_,_,_,_,_,_,"
+        }
+
+        set avg_pdr [expr 1.0 * $sink_sum_rcv_pkts / ($cbr_sent_pkts*$opt(sink_mode)) * 100]
+        append line [format "%.1f" $avg_pdr]
+
+        puts $line
+    }
+}
+
+###################
+# Final Procedure #
+###################
+proc finish {} {
+    global opt
+
+    if {$opt(finish_mode) == "diag"} {
+        finish_diag
+    }
+
+    if {$opt(finish_mode) == "export"} {
+        finish_export
+    }
+}
+
 ###################
 # start simulation
 ###################
 if ($opt(verbose)) {
     puts "\nStarting Simulation\n"
-    puts "----------------------------------------------"
+    puts "--------------------------------------"
 }
 
 
