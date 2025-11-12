@@ -122,7 +122,7 @@ set opt(stoptime)           86400 ;# One day 10000 ;#
 set opt(txduration)         [expr $opt(stoptime) - $opt(starttime)] ;# Duration of the simulation
 
 set opt(txpower)            156.0  ;#Power transmitted in dB re uPa
-set opt(max_range)          100    ;# Max transmission range
+set opt(max_range)          300    ;# Max transmission range
 
 set opt(maxinterval_)       200.0
 set opt(freq)               50000.0 ;#Frequency used in Hz
@@ -154,7 +154,6 @@ if {$opt(ACK_Active)} {
     set opt(ack_mode)           "setNoAckMode"
 }
 
-global defaultRNG
 for {set k 0} {$k < $opt(rngstream)} {incr k} {
 	$defaultRNG next-substream
 }
@@ -205,7 +204,7 @@ Module/UW/AHOI/PHY  set RxSnrPenalty_dB_            0
 Module/UW/AHOI/PHY  set TxSPLMargin_dB_             0
 Module/UW/AHOI/PHY  set MaxTxSPL_dB_                $opt(txpower)
 Module/UW/AHOI/PHY  set MinTxSPL_dB_                10
-Module/UW/AHOI/PHY  set MaxTxRange_                 200
+Module/UW/AHOI/PHY  set MaxTxRange_                 300
 Module/UW/AHOI/PHY  set PER_target_                 0
 Module/UW/AHOI/PHY  set CentralFreqOptimization_    0
 Module/UW/AHOI/PHY  set BandwidthOptimization_      0
@@ -288,8 +287,8 @@ proc createNode { id } {
     $phy($id) setSpectralMask $data_mask
     $phy($id) setInterference $interf_data($id)
     $phy($id) setInterferenceModel "MEANPOWER"; # "CHUNK" is not supported
-    $phy($id) setRangePDRFileName "../dbs/ahoi/default_pdr.csv"
-    $phy($id) setSIRFileName "../dbs/ahoi/default_sir.csv"
+    $phy($id) setRangePDRFileName ".desert/pdr.csv"
+    $phy($id) setSIRFileName ".desert/sir.csv"
     $phy($id) initLUT
     $mac($id) $opt(ack_mode)
     $mac($id) initialize
@@ -372,8 +371,8 @@ proc createSink { id } {
     $phy_data_sink($id) setSpectralMask $data_mask
     $phy_data_sink($id) setInterference $interf_data($id)
     $phy_data_sink($id) setInterferenceModel "MEANPOWER"; # "CHUNK" is not supported
-    $phy_data_sink($id) setRangePDRFileName "../dbs/ahoi/default_pdr.csv"
-    $phy_data_sink($id) setSIRFileName "../dbs/ahoi/default_sir.csv"
+    $phy_data_sink($id) setRangePDRFileName ".desert/pdr.csv"
+    $phy_data_sink($id) setSIRFileName "./.desert/sir.csv"
     $phy_data_sink($id) initLUT
     $mac_sink($id) $opt(ack_mode)
     $mac_sink($id) initialize
@@ -557,7 +556,7 @@ proc finish_diag {} {
         puts "Mean Throughput           : [expr ($sum_cbr_throughput/$opt(sink_mode))]"
         puts "Sent Packets              : $sum_cbr_sent_pkts"
         puts "Received Packets          : $sum_cbr_rcv_pkts"
-        puts "Packet Delivery Ratio     : [expr $sum_cbr_rcv_pkts / $sum_cbr_sent_pkts * 100]"
+        puts "Packet Delivery Ratio     : [expr $sum_cbr_sent_pkts > 0 ? ($sum_cbr_rcv_pkts / $sum_cbr_sent_pkts * 100) : 100.0]"
         puts "IP Pkt Header Size        : $ipheadersize"
         puts "UDP Header Size           : $udpheadersize"
         puts "CBR Header Size           : $cbrheadersize"
@@ -618,15 +617,6 @@ proc finish_export {} {
         set sink_sum_rcv_pkts           0
 
         append line "[format "%.2f" $position_x],[format "%.2f" $position_y],$cbr_sent_pkts,"
-        #puts "position($node_id) X     : $position_x"
-        #puts "position($node_id) Y     : $position_y"
-        #puts "cbr($node_id) Throughput     : $cbr_throughput"
-        #puts "cbr($node_id) Packets sent   : $cbr_sent_pkts"
-        #puts "cbr($node_id) PER            : $cbr_per       "
-
-        #set cbr_rcv_pkts                [$cbr_sink(254,$node_id) getrecvpkts]
-        #set cbr_sink_throughput         [$cbr_sink(254,$node_id) getthr]
-        #set cbr_sink_per                [$cbr_sink(254,$node_id) getper]
 
         foreach sink_id $sink_ids {
             set cbr_rcv_pkts                [$cbr_sink($sink_id,$node_id) getrecvpkts]
@@ -635,10 +625,6 @@ proc finish_export {} {
 
             append line "$cbr_rcv_pkts,[format "%.2f" $cbr_sink_per],[format "%.2f" $cbr_sink_throughput],"
 
-            #puts "cbr_sink($sink_id) Throughput     : $cbr_sink_throughput"
-            #puts "cbr_sink($sink_id) PER            : $cbr_sink_per"
-            #puts "cbr_sink($sink_id) Recv           : $cbr_rcv_pkts"
-            #puts "-------------------------------------------"
             set sink_sum_rcv_pkts  [expr $sink_sum_rcv_pkts + $cbr_rcv_pkts]
         }
 
@@ -648,7 +634,7 @@ proc finish_export {} {
             append line "_,_,_,_,_,_,"
         }
 
-        set avg_pdr [expr 1.0 * $sink_sum_rcv_pkts / ($cbr_sent_pkts*$opt(sink_mode)) * 100]
+        set avg_pdr [expr {$cbr_sent_pkts > 0 ? (100.0 * $sink_sum_rcv_pkts / ($cbr_sent_pkts*$opt(sink_mode))) : 100.0}]
         append line [format "%.1f" $avg_pdr]
 
         puts $line
