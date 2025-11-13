@@ -71,8 +71,10 @@
 # TODO: Triple messages +
 # TODO: Test if I can set different cbr period ???
 # TODO: Print pretty statistic and feed it to the python script (x,y,n_msg_sent,sink1,sink2,sink3) +
-# TODO: Make sure 300m distance
-# TODO: Enable bash parameters + and create a bash script
+# TODO: Make sure 300m distance +
+# TODO: Enable bash parameters + and create a bash script +
+# TODO: Display diagrams +
+# TODO: Display the setup diagram
 
 ######################################
 # Flags to enable or disable options #
