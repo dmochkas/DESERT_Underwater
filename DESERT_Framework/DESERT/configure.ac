@@ -262,6 +262,8 @@ AC_CONFIG_FILES([
     data_link/uwtdma-frame/Makefile
     data_link/uwtokenbus/Makefile
     data_link/uwjammer/Makefile
+    data_link/uwreplicator/Makefile
+    data_link/uw-cs-burst/Makefile
     channel/uwem_channel/Makefile
     channel/uwoptical_channel/Makefile
     ranging/uwranging_tokenbus/Makefile
