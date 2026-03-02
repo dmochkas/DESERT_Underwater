@@ -73,6 +73,7 @@ SUBDIRS = m4 \
     network/uwip \
     transport/uwudp \
     application/uwcbr \
+    application/uwcbrwr \
     application/uwvbr \
     application/uwApplication \
     network/uwstaticrouting \
