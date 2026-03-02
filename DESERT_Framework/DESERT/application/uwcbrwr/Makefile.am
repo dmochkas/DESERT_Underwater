@@ -36,23 +36,17 @@ SUBDIRS =
 
 TESTS = 
 
-libuwcbr_la_SOURCES = initlib.cpp\
+libuwcbrwr_la_SOURCES = initlib.cpp\
     uwcbrwr.cpp\
     uwcbr_default.tcl
 
 
-libuwcbr_la_CPPFLAGS = @NS_CPPFLAGS@ @NSMIRACLE_CPPFLAGS@ @DESERT_CPPFLAGS@
-libuwcbr_la_LDFLAGS =  @NS_LDFLAGS@ @NSMIRACLE_LDFLAGS@ @DESERT_LDFLAGS@
-libuwcbr_la_LIBADD = @NS_LIBADD@ @NSMIRACLE_LIBADD@ @DESERT_LIBADD@ \
+libuwcbrwr_la_CPPFLAGS = @NS_CPPFLAGS@ @NSMIRACLE_CPPFLAGS@ @DESERT_CPPFLAGS@
+libuwcbrwr_la_LDFLAGS =  @NS_LDFLAGS@ @NSMIRACLE_LDFLAGS@ @DESERT_LDFLAGS@
+libuwcbrwr_la_LIBADD = @NS_LIBADD@ @NSMIRACLE_LIBADD@ @DESERT_LIBADD@ \
 					 @DESERT_UWCBR_LIBADD@
 
-nodist_libuwcbr_la_SOURCES = InitTcl.cc
-
-#libuwcbrtracer_la_SOURCES = uwcbr-tracer.cpp
-
-#libuwcbrtracer_la_CPPFLAGS = @NS_CPPFLAGS@ @NSMIRACLE_CPPFLAGS@ @DESERT_CPPFLAGS@
-#libuwcbrtracer_la_LDFLAGS =  @NS_LDFLAGS@ @NSMIRACLE_LDFLAGS@ @DESERT_LDFLAGS@ -L./
-#libuwcbrtracer_la_LIBADD = @NS_LIBADD@ @NSMIRACLE_LIBADD@ @DESERT_LIBADD@ -luwcbr
+nodist_libuwcbrwr_la_SOURCES = InitTcl.cc
 
 BUILT_SOURCES = InitTcl.cc
 

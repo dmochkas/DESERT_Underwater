@@ -5,7 +5,7 @@
 #include <stdint.h>
 #include <string>
 
-packet_t PT_UWCBRWR;
+extern packet_t PT_UWCBRWR;
 
 int hdr_uwcbr::offset_; /**< Offset used to access in <i>hdr_uwcbr</i> packets
 						   header. */
@@ -22,7 +22,7 @@ public:
 		this->bind();
 		bind_offset(&hdr_uwcbrwr::offset_);
 	}
-} class_uwcbr_pkt;
+} class_uwcbrwr_pkt;
 
 /**
  * Adds the module for UwCbrModuleClass in ns2.
@@ -52,24 +52,45 @@ public:
 
 UwCbrWRModule::UwCbrWRModule()
 	: UwCbrModule(),
-	request_flag(false)
+	with_response_rate(0.1)
 { // binding to TCL variables
+	bind("with_response_rate", &with_response_rate);
 }
 
 int
 UwCbrWRModule::command(int argc, const char *const *argv)
 {
-	return TCL_OK;
+	Tcl &tcl = Tcl::instance();
+	if (argc == 2) {
+		if (strcasecmp(argv[1], "start") == 0) {
+			start();
+			return TCL_OK;
+		} else if (strcasecmp(argv[1], "getWithResponseRate") == 0) {
+			tcl.resultf("%f", getWithResponseRate());
+		}
+	}
+	return UwCbrModule::command(argc, argv);
+}
+
+void UwCbrWRModule::initPkt(Packet *p) {
+	UwCbrModule::initPkt(p);
+
+	hdr_cmn *ch = hdr_cmn::access(p);
+	ch->ptype() = PT_UWCBRWR;
+
+	hdr_uwcbrwr* uwcbrwr = hdr_uwcbrwr::access(p);
+	double u = RNG::defaultrng()->uniform_double();
+	uwcbrwr->response_flag() = u < with_response_rate;
 }
 
 void
-UwCbrModule::recv(Packet *p, Handler *h)
+UwCbrWRModule::recv(Packet *p, Handler *h)
 {
 	recv(p);
 }
 
 void
-UwCbrModule::recv(Packet *p)
+UwCbrWRModule::recv(Packet *p)
 {
 	hdr_cmn *ch = hdr_cmn::access(p);
 
@@ -152,4 +173,8 @@ UwCbrModule::recv(Packet *p)
 							" hrsn = " + to_string(hrsn));
 		}
 	}
+}
+
+double UwCbrWRModule::getWithResponseRate() const {
+	return with_response_rate;
 }

@@ -101,7 +101,7 @@ typedef struct hdr_uwcbrwr : public hdr_uwcbr {
 	{
 		return response_flag_;
 	}
-} hdr_uwcbr;
+} hdr_uwcbrwr;
 
 /**
  * UwSendTimer class is used to handle the scheduling period of <i>UWCBR</i>
@@ -127,6 +127,8 @@ typedef struct hdr_uwcbrwr : public hdr_uwcbr {
  */
 class UwCbrWRModule : public UwCbrModule
 {
+protected:
+	double with_response_rate;
 public:
 	/**
 	 * Constructor of UwCbrModule class.
@@ -138,33 +140,35 @@ public:
 	 */
 	virtual ~UwCbrWRModule() = default;
 
-	///**
-	// * Performs the reception of packets from upper and lower layers.
-	// *
-	// * @param Packet* Pointer to the packet will be received.
-	// */
-	//void recv(Packet *) override;
-//
-	///**
-	// * Performs the reception of packets from upper and lower layers.
-	// *
-	// * @param Packet* Pointer to the packet will be received.
-	// * @param Handler* Handler.
-	// */
-	//void recv(Packet *p, Handler *h) override;
-//
-	///**
-	// * TCL command interpreter. It implements the following OTcl methods:
-	// *
-	// * @param argc Number of arguments in <i>argv</i>.
-	// * @param argv Array of strings which are the command parameters (Note that
-	// * <i>argv[0]</i> is the name of the object).
-	// * @return TCL_OK or TCL_ERROR whether the command has been dispatched
-	// * successfully or not.
-	// *
-	// */
-	//virtual int command(int argc, const char *const *argv) override;
-//
+	/**
+	 * Performs the reception of packets from upper and lower layers.
+	 *
+	 * @param Packet* Pointer to the packet will be received.
+	 */
+	void recv(Packet *) override;
+	/**
+	 * Performs the reception of packets from upper and lower layers.
+	 *
+	 * @param Packet* Pointer to the packet will be received.
+	 * @param Handler* Handler.
+	 */
+	void recv(Packet *p, Handler *h) override;
+
+	/**
+	 * TCL command interpreter. It implements the following OTcl methods:
+	 *
+	 * @param argc Number of arguments in <i>argv</i>.
+	 * @param argv Array of strings which are the command parameters (Note that
+	 * <i>argv[0]</i> is the name of the object).
+	 * @return TCL_OK or TCL_ERROR whether the command has been dispatched
+	 * successfully or not.
+	 *
+	 */
+	int command(int argc, const char *const *argv) override;
+
+	void initPkt(Packet *p) override;
+
+	double getWithResponseRate() const;
 	///**
 	// * Returns the mean Round Trip Time.
 	// *
@@ -229,7 +233,7 @@ public:
 	//	std::cout << "PT_UWCBR: \t\t" << PT_UWCBR << std::endl;
 	//}
 //
-prot//ected:
+//protected:
 	//static int uidcnt_; /**< Unique id of the packet generated. */
 //
 	//uint16_t dstPort_; /**< Destination port. */
