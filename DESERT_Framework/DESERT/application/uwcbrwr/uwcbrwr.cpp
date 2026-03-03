@@ -1,8 +1,6 @@
 #include "uwcbrwr.h"
 
-#include <iostream>
 #include <rng.h>
-#include <stdint.h>
 #include <string>
 
 extern packet_t PT_UWCBRWR;
@@ -45,12 +43,8 @@ public:
 UwCbrWRModule::UwCbrWRModule()
 	: UwCbrModule(),
 	with_response_rate(0.1)
-{ // binding to TCL variables
+{
 	bind("with_response_rate", &with_response_rate);
-//	bind("period_", &period_);
-//	bind("with_response_rate", &with_response_rate);
-//	bind("with_response_rate", &with_response_rate);
-//	bind("with_response_rate", &with_response_rate);
 }
 
 int
@@ -86,7 +80,6 @@ UwCbrWRModule::recv(Packet *p, Handler *h)
 void
 UwCbrWRModule::recv(Packet *p)
 {
-	// TODO: generate a response packet if response flag is set
 	hdr_cmn *ch = hdr_cmn::access(p);
 	hdr_uwcbr* cbr_hdr = hdr_uwcbr::access(p);
 	hdr_uwcbrwr* cbrwr_hdr = hdr_uwcbrwr::access(p);
@@ -103,13 +96,12 @@ UwCbrWRModule::recv(Packet *p)
 		return;
 	}
 
+	// Error handling is taken from UwCbrModule
 	if (!drop_out_of_order_ && sn_check[cbr_hdr->sn() & 0x00ffffff]) {
-		// Packet already processed: drop it
 		incrPktInvalid();
 		drop(p, 1, UWCBR_DROP_REASON_DUPLICATED_PACKET);
 		return;
 	} else if (drop_out_of_order_ && cbr_hdr->sn() < esn) {
-		// packet is out of sequence and is to be discarded
 		incrPktOoseq();
 
 		printOnLog(Logger::LogLevel::ERROR,
