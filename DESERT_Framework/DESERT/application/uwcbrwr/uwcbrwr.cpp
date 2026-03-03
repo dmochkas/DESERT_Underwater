@@ -7,7 +7,7 @@
 
 extern packet_t PT_UWCBRWR;
 
-int hdr_uwcbr::offset_; /**< Offset used to access in <i>hdr_uwcbr</i> packets
+int hdr_uwcbrwr::offset_; /**< Offset used to access in <i>hdr_uwcbr</i> packets
 						   header. */
 
 /**
@@ -25,7 +25,7 @@ public:
 } class_uwcbrwr_pkt;
 
 /**
- * Adds the module for UwCbrModuleClass in ns2.
+ * Adds the module for UwCbrUWModuleClass in ns2.
  */
 static class UwCbrWRModuleClass : public TclClass
 {
@@ -42,19 +42,15 @@ public:
 	}
 } class_module_uwcbrwr;
 
-// void
-// UwSendTimer::expire(Event *e)
-// {
-// 	module->transmit();
-// }
-
-// int UwCbrModule::uidcnt_ = 0;
-
 UwCbrWRModule::UwCbrWRModule()
 	: UwCbrModule(),
 	with_response_rate(0.1)
 { // binding to TCL variables
 	bind("with_response_rate", &with_response_rate);
+//	bind("period_", &period_);
+//	bind("with_response_rate", &with_response_rate);
+//	bind("with_response_rate", &with_response_rate);
+//	bind("with_response_rate", &with_response_rate);
 }
 
 int
@@ -62,11 +58,9 @@ UwCbrWRModule::command(int argc, const char *const *argv)
 {
 	Tcl &tcl = Tcl::instance();
 	if (argc == 2) {
-		if (strcasecmp(argv[1], "start") == 0) {
-			start();
-			return TCL_OK;
-		} else if (strcasecmp(argv[1], "getWithResponseRate") == 0) {
+ 		if (strcasecmp(argv[1], "getWithResponseRate") == 0) {
 			tcl.resultf("%f", getWithResponseRate());
+			return TCL_OK;
 		}
 	}
 	return UwCbrModule::command(argc, argv);
@@ -92,87 +86,77 @@ UwCbrWRModule::recv(Packet *p, Handler *h)
 void
 UwCbrWRModule::recv(Packet *p)
 {
+	// TODO: generate a response packet if response flag is set
 	hdr_cmn *ch = hdr_cmn::access(p);
-
-	printOnLog(Logger::LogLevel::DEBUG,
-			"UWCBR",
-			"recv(Packet *)::received packet with id " + to_string(ch->uid()));
-
-	if (ch->ptype() != PT_UWCBR) {
+	hdr_uwcbr* cbr_hdr = hdr_uwcbr::access(p);
+	hdr_uwcbrwr* cbrwr_hdr = hdr_uwcbrwr::access(p);
+	hdr_uwudp* udp_hdr = hdr_uwudp::access(p);
+	hdr_uwip* ip_hdr = hdr_uwip::access(p);
+	auto ip_src = ip_hdr->saddr();
+	auto port_src = udp_hdr->sport();
+	bool response_flag = false;
+	Packet* resp = nullptr;
+	packet_t ptype = ch->ptype();
+	if (ptype != PT_UWCBRWR && ptype != PT_UWCBR) {
 		drop(p, 1, UWCBR_DROP_REASON_UNKNOWN_TYPE);
 		incrPktInvalid();
 		return;
 	}
 
-	hdr_uwcbr *uwcbrh = HDR_UWCBR(p);
-	esn = hrsn + 1; // expected sn
+	if (!drop_out_of_order_ && sn_check[cbr_hdr->sn() & 0x00ffffff]) {
+		// Packet already processed: drop it
+		incrPktInvalid();
+		drop(p, 1, UWCBR_DROP_REASON_DUPLICATED_PACKET);
+		return;
+	} else if (drop_out_of_order_ && cbr_hdr->sn() < esn) {
+		// packet is out of sequence and is to be discarded
+		incrPktOoseq();
 
-	if (!drop_out_of_order_) {
-		if (sn_check[uwcbrh->sn() & 0x00ffffff]) {
-			// Packet already processed: drop it
-			incrPktInvalid();
-			drop(p, 1, UWCBR_DROP_REASON_DUPLICATED_PACKET);
-			return;
+		printOnLog(Logger::LogLevel::ERROR,
+				   "UWCBRWR",
+				   "recv(Packet *)::packet out of sequence sn = " +
+				   to_string(cbr_hdr->sn()) + " hrsn = " +
+				   to_string(hrsn) + " esn = " + to_string(esn));
+
+		drop(p, 1, UWCBR_DROP_REASON_OUT_OF_SEQUENCE);
+		return;
+	}
+
+	if (ptype == PT_UWCBRWR) {
+		ch->ptype() = PT_UWCBR;
+		response_flag = cbrwr_hdr->response_flag();
+		resp = p->copy();
+	}
+
+	// Packet p is freed
+	UwCbrModule::recv(p);
+
+	if (!response_flag) {
+		if (resp != nullptr) {
+			Packet::free(resp);
 		}
+		return;
 	}
 
-	sn_check[uwcbrh->sn() & 0x00ffffff] = true;
+	printOnLog(Logger::LogLevel::DEBUG, "UWCBRWR",
+			"recv(Packet *)::Sending response to " + to_string(ip_src) + ":" + to_string(port_src));
 
-	if (drop_out_of_order_) {
-		if (uwcbrh->sn() < esn) {
-			// packet is out of sequence and is to be discarded
-			incrPktOoseq();
+	ch = hdr_cmn::access(resp);
+	ch->direction() = hdr_cmn::DOWN;
+	ch->timestamp() = Scheduler::instance().clock();
 
-			printOnLog(Logger::LogLevel::ERROR,
-					"UWCBR",
-					"recv(Packet *)::packet out of sequence sn = " +
-							to_string(uwcbrh->sn()) + " hrsn = " +
-							to_string(hrsn) + " esn = " + to_string(esn));
+	cbrwr_hdr = hdr_uwcbrwr::access(resp);
+	cbrwr_hdr->response_flag() = false;
 
-			drop(p, 1, UWCBR_DROP_REASON_OUT_OF_SEQUENCE);
-			return;
-		}
-	}
+	udp_hdr = hdr_uwudp::access(resp);
+	udp_hdr->sport() = 0;
+	udp_hdr->dport() = port_src;
 
-	rftt = NOW - ch->timestamp();
+	ip_hdr = hdr_uwip::access(resp);
+	ip_hdr->saddr() = 0;
+	ip_hdr->daddr() = ip_src;
 
-	if (uwcbrh->rftt_valid()) {
-		double rtt = rftt + uwcbrh->rftt();
-		updateRTT(rtt);
-	}
-
-	if (tracefile_enabler_) {
-		printReceivedPacket(p);
-	}
-
-	updateFTT(rftt);
-
-	incrPktRecv();
-
-	hrsn = uwcbrh->sn();
-	if (drop_out_of_order_) {
-		if (uwcbrh->sn() > esn) {
-			incrPktLost(uwcbrh->sn() - (esn));
-		}
-	}
-
-	double dt = NOW - lrtime;
-	updateThroughput(ch->size(), dt);
-
-	lrtime = NOW;
-
-	Packet::free(p);
-
-	if (drop_out_of_order_) {
-		if (pkts_lost + pkts_recv + pkts_last_reset != hrsn) {
-
-			printOnLog(Logger::LogLevel::ERROR,
-					"UWCBR",
-					"recv(Packet *)::pkts_lost = " + to_string(pkts_lost) +
-							" pkts_recv = " + to_string(pkts_recv) +
-							" hrsn = " + to_string(hrsn));
-		}
-	}
+	sendDown(resp);
 }
 
 double UwCbrWRModule::getWithResponseRate() const {

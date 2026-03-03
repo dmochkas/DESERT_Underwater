@@ -65,7 +65,7 @@ extern packet_t PT_UWCBRWR;
 /**
  * <i>hdr_uwcbr</i> describes <i>UWCBR</i> packets.
  */
-typedef struct hdr_uwcbrwr : public hdr_uwcbr {
+typedef struct hdr_uwcbrwr {
 //	uint16_t sn_; /**< Serial number of the packet. */
 //	float rftt_; /**< Forward Trip Time of the packet. */
 //	bool rftt_valid_; /**< Flag used to set the validity of the fft field. */
@@ -74,7 +74,6 @@ typedef struct hdr_uwcbrwr : public hdr_uwcbr {
 //	uint16_t traffic_type_; /**< Traffic type: (video, audio, image, etc..)
 //							   meaning left to the user */
 	bool response_flag_;
-//	hdr_uwcbr uwcbr;
 
 	static int offset_; /**< Required by the PacketHeaderManager. */
 
